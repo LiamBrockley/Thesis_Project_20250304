@@ -292,8 +292,6 @@ find_cilia <- function(row) {
 # Apply the function row-wise to populate the "cilia" column
 phenotypic_data$cilia_length <- apply(phenotypic_data, 1, find_cilia)
 
-
-
 ## Now cut out the messy columns
 phenotypic_data <- phenotypic_data[,-c(5:15)]
 
@@ -629,8 +627,6 @@ query_clinical$results[[1]] <- query_clinical$results[[1]] %>%
 #GDCdownload(query_clinical, directory = "../../GDC_data")
 clinical_data <- GDCprepare_clinic(query_clinical, clinical.info = "patient", directory = "../../GDC_data")
 
-head(clinical_data)
-
 ```
 
 
@@ -692,7 +688,6 @@ sample_info_matched_T_NM <- sample_info_matched_T_NM %>%
   left_join(., clinical_data %>% select( "bcr_patient_barcode", "tobacco_smoking_history"), by = c("patient"= "bcr_patient_barcode")) %>%
   filter(tobacco_smoking_history != 1) #Remove never-smokers
 
-
 ### Modify the counts table for tumor-normal matched data ###
 
 # Keep the counts columns of sample labels that are in the T-NM matched info
@@ -704,7 +699,6 @@ counts_matched_T_NM <- counts %>%
 names(counts_matched_T_NM) <- sample_info_matched_T_NM$sample
 
 ```
-
 
 
 ## 2.2.1 Quality control checks
@@ -945,7 +939,7 @@ keep <- filterByExpr(counts_matched_T_NM, design = design) # new method
 # Filter out rows with less than 10 total counts in the smallest sample group size (88/2 = 44)
 #keep <- rowSums(counts_matched_T_NM >= 10) >= 44 # old method
 
-counts_matched_T_NM_filtered<- counts_matched_T_NM[keep,]
+counts_matched_T_NM_filtered <- counts_matched_T_NM[keep,]
 
 # Use voom to transform the counts
 voom_data <- voom(counts_matched_T_NM_filtered, design)
@@ -958,7 +952,7 @@ contrast_matrix <- makeContrasts(Tumor - Normal, levels = design)
 fit2 <- contrasts.fit(fit, contrast_matrix)
 fit2 <- eBayes(fit2)
 
-# Get top differentially methylated probes
+# Get top differentially expressed probes
 tT <- topTable(fit2, adjust = "BH", number = Inf)
 
 # Giving more descriptive name and colnames to list
@@ -1081,11 +1075,9 @@ I decided I should switch from wilcoxon sign-rank test to limma because this is 
 
 ## 3.1 Loading dataset downloaded from cbioportal
 ```{r}
-
 data_methylation_hm450_tumor <- read.table("../3_TCGA_data/TCGA_LUAD/data_methylation_hm450_LUAD.txt", header=TRUE, fill=TRUE)
 
 data_methylation_hm450_normal <- read.table("../3_TCGA_data/TCGA_LUAD/data_methylation_hm450_normals_LUAD.txt", header=TRUE, fill=TRUE)
-
 ```
 
 
@@ -1111,7 +1103,6 @@ clinical_data_filtered <- clinical_data %>%
   filter(tobacco_smoking_history != 1) # Remove never smokers
 
 ## Filter out the corresponding IDs from allIDs_normal
-
 allIDs_normal_filtered <- clinical_data_filtered$bcr_patient_barcode%>%
   gsub("-","\\.", .) %>%
   lapply(., function(x) paste0(x, ".11")) %>%
@@ -1127,7 +1118,7 @@ data_methylation_hm450_tumor_with_matches <- data_methylation_hm450_tumor %>%
   dplyr::select(any_of(IDs_tumor_with_matches))
 length(data_methylation_hm450_tumor_with_matches)
 
-#Make a table of the methylation data for normal samples only with matching tumor data.
+# Make a table of the methylation data for normal samples only with matching tumor data.
 # Note that 3 of the normal samples don't have a matching tumor sample:
 #`TCGA.44.2655.01`, `TCGA.44.2659.01`, and `TCGA.44.2662.01` don't exist.
 data_methylation_hm450_normal_with_matches <- data_methylation_hm450_normal %>%
@@ -1138,6 +1129,13 @@ length(data_methylation_hm450_normal_with_matches)
 #Make a combined table of matched tumor-normal samples.
 data_methylation_hm450_tumor_normal_matched <- cbind(data_methylation_hm450_tumor_with_matches, data_methylation_hm450_normal_with_matches)[order(c(1:length(data_methylation_hm450_tumor_with_matches),1:length(data_methylation_hm450_normal_with_matches)))]
 data_methylation_hm450_tumor_normal_matched <- cbind(Gene = data_methylation_hm450_tumor$Hugo_Symbol, data_methylation_hm450_tumor_normal_matched) # Adding back gene labels
+
+## filtering the clinical data again
+sample_names <- colnames(data_methylation_hm450_normal_with_matches)
+sample_names <- lapply(sample_names, function(x) gsub(".11", "", x))
+sample_names <- lapply(sample_names, function(x) gsub("\\.", "-", x))
+clinical_data_filtered <- clinical_data_filtered[clinical_data_filtered$bcr_patient_barcode %in% sample_names,]
+
 
 ```
 
@@ -1552,6 +1550,7 @@ tT_persistent <- tT_persistent %>%
   # For probesets mapping to same gene, keep one with lowest FDR. Keep ties for now to check later.
   ungroup()
 nrow(tT_persistent)
+## TO DO: Change this to filtering out duplicates
 
 # Checking for ties
 ties <- tT_persistent%>%

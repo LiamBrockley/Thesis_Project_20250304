@@ -675,6 +675,13 @@ counts_matched_T_NM <- counts %>%
 # Rename with sample label instead of sample barcode
 names(counts_matched_T_NM) <- sample_info_matched_T_NM$sample
 
+# Filter the clinical data
+IDs <- colnames(counts_matched_T_NM)
+IDs <- gsub("-01A|-11A", "", IDs)
+IDs <- unique(IDs)
+clinical_data_filtered_LUSC_TE <- clinical_data %>%
+  filter(bcr_patient_barcode %in% IDs)
+
 ```
 
 
@@ -898,7 +905,6 @@ I decided I should switch from wilcoxon sign-rank test to limma because this is 
 
 data_methylation_hm450_tumor <- read.table("../3_TCGA_data/TCGA_LUSC/data_methylation_hm450_LUSC.txt", header=TRUE, fill=TRUE)
 
-
 data_methylation_hm450_normal <- read.table("../3_TCGA_data/TCGA_LUSC/data_methylation_hm450_normals_LUSC.txt", header=TRUE, fill=TRUE)
 
 ```
@@ -926,14 +932,14 @@ clinical_data_filtered <- clinical_data %>%
   filter(tobacco_smoking_history != 1) # Remove never smokers
 
 ## Filter out the corresponding IDs from allIDs_normal
-allIDs_normal_filtered <- clinical_data_filtered$bcr_patient_barcode%>%
+allIDs_normal_filtered <- clinical_data_filtered$bcr_patient_barcode %>%
   gsub("-","\\.", .) %>%
   lapply(., function(x) paste0(x, ".11")) %>%
   unlist()
 length(allIDs_normal_filtered)
 
 #Listing IDs of tumors that have matched normals by changing the tissue ID to the "tumor" identifier, "01", for matching purposes.
-IDs_tumor_with_matches <-gsub("*.11",".01", allIDs_normal_filtered)
+IDs_tumor_with_matches <- gsub("*.11",".01", allIDs_normal_filtered)
 length(IDs_tumor_with_matches)
 
 #Make a table of the methylation data for tumor samples only with matching normal data.
@@ -961,6 +967,14 @@ data_methylation_hm450_tumor_normal_matched <- cbind(data_methylation_hm450_tumo
 
 # Adding back gene labels
 data_methylation_hm450_tumor_normal_matched <- cbind(Gene = data_methylation_hm450_tumor$Hugo_Symbol, data_methylation_hm450_tumor_normal_matched) 
+
+# Filtering the clinical data again
+patient_barcodes <- colnames(data_methylation_hm450_normal_with_matches)
+patient_barcodes <- gsub(".11", "", patient_barcodes)
+patient_barcodes <- gsub("\\.", "-", patient_barcodes)
+
+clinical_data_filtered <- clinical_data_filtered %>%
+  filter(bcr_patient_barcode %in% patient_barcodes)
 
 ```
 

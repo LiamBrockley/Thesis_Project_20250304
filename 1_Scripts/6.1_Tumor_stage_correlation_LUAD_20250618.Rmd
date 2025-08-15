@@ -1,0 +1,567 @@
+---
+title: "Tumor_stage_correlation"
+output: html_document
+date: "2025-06-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+I want to check the genes of interest for tumor stage correlation to particularly see if any are associated with early stage tumors.
+
+## Load libraries
+```{r}
+library(dplyr)
+library(TCGAbiolinks)
+library(SummarizedExperiment)
+```
+
+
+## Read in genes of interest
+```{r}
+LUAD_A1_TE <- read.table("../../2_Outputs/4_Linked_genes/LUAD_A1_TE_20250514.txt")
+LUAD_A1_TE_A2<- read.table("../../2_Outputs/4_Linked_genes/LUAD_A1_TE_A2_20250514.txt")
+LUAD_A1_TE_A2_TM <- read.table("../../2_Outputs/4_Linked_genes/LUAD_A1_TE_A2_TM_20250610.txt")
+```
+
+# LUAD
+
+## Download clinical data
+```{r}
+library(TCGAbiolinks)
+library(SummarizedExperiment)
+
+query_clinical <- GDCquery(
+  project = "TCGA-LUAD",
+  data.category = "Clinical",
+  data.type = "Clinical Supplement"
+)
+
+# Check the available files
+query_clinical$results[[1]] %>% head()
+
+## I see that some are not BCR XML files, so I will try to remove these
+query_clinical$results[[1]] <- query_clinical$results[[1]] %>%
+  filter(data_format == "BCR XML")
+
+## Download data
+GDCdownload(query_clinical, directory = "../../GDC_data")
+clinical_data <- GDCprepare_clinic(query_clinical, clinical.info = "patient", directory = "../../GDC_data")
+
+head(clinical_data)
+```
+
+### Download expression data
+```{r}
+query <- GDCquery(project = "TCGA-LUAD",
+                  data.category = "Transcriptome Profiling",
+                  data.type = "Gene Expression Quantification",
+                  sample.type = "Primary Tumor",
+                  workflow.type = "STAR - Counts")
+
+GDCdownload(query, directory = "../../GDC_data")
+
+data <- GDCprepare(query, directory = "../../GDC_data")
+
+counts <- as.data.frame(assay(data))  # Extracting the count matrix (these are supposedly raw counts)
+head(counts)  # Viewing the first few rows (genes) and columns (samples)
+
+gene_info <- as.data.frame(rowData(data))
+head(gene_info)  # Preview the first few genes and their annotations
+
+sample_info <- as.data.frame(colData(data))
+head(sample_info)  # Preview sample metadata
+
+```
+
+## Match clinical to expression data
+```{r}
+library(edgeR)
+
+# Filter out lowly expressed genes
+keep <- filterByExpr(counts)
+counts_filtered <- counts[keep, ]
+
+# Make sure sample barcodes match clinical format
+colnames(counts_filtered) <- substr(colnames(counts_filtered), 1, 12) ## Confirm what this does
+
+# Keep only matching samples in both data sets
+matching_samples <- intersect(colnames(counts_filtered), clinical_data$bcr_patient_barcode)
+counts_filtered <- counts_filtered[, matching_samples]
+clinical_data <- clinical_data[clinical_data$bcr_patient_barcode %in% matching_samples, ]
+
+# Order both the same
+clinical_data <- clinical_data[match(colnames(counts_filtered), clinical_data$bcr_patient_barcode), ]
+stopifnot(all(colnames(counts_filtered) == clinical_data$bcr_patient_barcode))
+
+# Seems there are still 8 extra samples in the counts data, so remove those
+samples_to_remove <- setdiff(colnames(counts_filtered), clinical_data$bcr_patient_barcode)
+counts_filtered <- counts_filtered %>%
+  select(-all_of(samples_to_remove))
+
+```
+
+## Normalize raw counts (logCPM for correlation)
+```{r}
+dge <- DGEList(counts = counts_filtered)
+dge <- calcNormFactors(dge)
+logCPM <- cpm(dge, log = TRUE)
+
+## Store this LUAD specific logCPM
+#LUAD_logCPM <- logCPM
+```
+
+## Clean and parse tumor stage
+```{r}
+stage <- clinical_data$stage_event_pathologic_stage
+stage_clean <- gsub("stage ", "", tolower(stage))
+stage_clean <- factor(stage_clean, 
+                      levels = c("i", "ia", "ib", "ii", "iia", "iib", 
+                                 "iii", "iiia", "iiib", "iiic", "iv"),
+                      ordered = TRUE)
+
+# Drop samples with missing stage
+valid_idx <- which(!is.na(stage_clean))
+logCPM <- logCPM[, valid_idx]
+stage_clean <- stage_clean[valid_idx]
+clinical_data <- clinical_data[valid_idx, ]
+
+# Store this LUAD specific stage info and clinical data
+# LUAD_stage_clean <- stage_clean
+# LUAD_clinical_data <- clinical_data
+```
+
+## Correlate gene expression with tumor stage
+```{r}
+# logCPM <- LUAD_logCPM
+# stage_clean <- LUAD_stage_clean
+# clinical_data <- LUAD_clinical_data
+
+genes_of_interest <- LUAD_A1_TE$Gene
+
+results <- data.frame(Gene = character(), SpearmanRho = numeric(), p_value = numeric())
+
+for (gene in genes_of_interest) {
+  gene_id <- rownames(gene_info)[gene_info$gene_name == gene]
+  if (length(gene_id) == 0 || !(gene_id %in% rownames(logCPM))) next
+  
+  expr <- as.numeric(logCPM[gene_id, ])
+  cor_test <- cor.test(expr, as.numeric(stage_clean), method = "spearman")
+  
+  results <- rbind(results, data.frame(
+    Gene = gene,
+    SpearmanRho = cor_test$estimate,
+    p_value = cor_test$p.value
+  ))
+}
+
+# Adjust p-values
+results$FDR <- p.adjust(results$p_value, method = "BH")
+
+## Give better label 
+LUAD_A1_TE_tumor_stage_spearman <- results
+
+## Add column for log2FC in the original A1_TE list
+LUAD_A1_TE_tumor_stage_spearman <- LUAD_A1_TE_tumor_stage_spearman %>%
+  left_join(., LUAD_A1_TE[,c("Gene", "log2FC_A1")], by = "Gene")
+
+# save (unfiltered) results
+
+#write.table(LUAD_A1_TE_tumor_stage_spearman, "../../2_Outputs/LUAD_A1_TE_tumor_stage_spearman_20250613.txt")
+
+```
+
+## Filtering and checking results
+```{r}
+
+
+#LUAD_A1_TE_tumor_stage_spearman <- read.table("../../2_Outputs/LUAD_A1_TE_tumor_stage_spearman_20250613.txt") 
+
+## Filter results for FDR <= 0.05
+LUAD_A1_TE_tumor_stage_spearman_filtered <- LUAD_A1_TE_tumor_stage_spearman[LUAD_A1_TE_tumor_stage_spearman$FDR<=0.05,]
+
+## STRING link:
+# https://version-12-0.string-db.org/cgi/network?networkId=bQRq1iZQ91dn
+
+
+## Check which of these genes were in LUAD_A1_TE_A2
+LUAD_A1_TE_A2_tumor_stage_spearman_filtered <- LUAD_A1_TE_tumor_stage_spearman_filtered %>%
+  filter(Gene %in% LUAD_A1_TE_A2$Gene)
+# STRING: https://version-12-0.string-db.org/cgi/network?networkId=bqoPZxwyQa1x
+# Many of those genes are NADP interacting: PMID 36880517
+
+## Check which of these genes were in LUAD_A1_TE_A2_TM
+LUAD_A1_TE_A2_TM_tumor_stage_spearman_filtered <- LUAD_A1_TE_tumor_stage_spearman_filtered %>%
+  filter(Gene %in% LUAD_A1_TE_A2_TM$Gene)
+
+
+# Now I am wondering specifically about genes that are be more highly expressed in early tumors (so negative rho) but with higher expression in smoker airways and tumor vs normal (so positive log2FC_A1). I would postulate that maybe these genes could be important in the carcinogenesis process but not in the later tumor progression. Of course there are other possibilities and genes with other signs could be important too.
+LUAD_A1_TE_tumor_stage_spearman_filtered_down_up <- LUAD_A1_TE_tumor_stage_spearman_filtered %>%
+  filter(sign(SpearmanRho) == -1) %>%
+  filter(sign(log2FC_A1) == 1)
+# These don't seem to be in any common pathways, so maybe a red herring, idk.
+# https://version-12-0.string-db.org/cgi/network?networkId=baLsO0qrek1i
+# Despite the fact they are not labelled, CLNK, FCRL2, and MZB1 seem to all be involved in B cells in some way
+# They all appear together in this article:
+# https://www.sciencedirect.com/science/article/pii/S2090123223000693
+# ENRICHR cellmarker 2024 agrees that FCRL2 and MZB1 are markers of B cells in the lung:
+# https://maayanlab.cloud/Enrichr/enrich
+
+# I think you could tell similar stories about genes with any combination of those signs, so I will check the other combinations.
+LUAD_A1_TE_tumor_stage_spearman_filtered_up_down <- LUAD_A1_TE_tumor_stage_spearman_filtered %>%
+  filter(sign(SpearmanRho) == 1) %>%
+  filter(sign(log2FC_A1) == -1)
+
+LUAD_A1_TE_tumor_stage_spearman_filtered_up_up <- LUAD_A1_TE_tumor_stage_spearman_filtered %>%
+  filter(sign(SpearmanRho) == 1) %>%
+  filter(sign(log2FC_A1) == 1)
+# STRING link:
+# https://version-12-0.string-db.org/cgi/network?networkId=bHCjuZWl92rI
+
+LUAD_A1_TE_tumor_stage_spearman_filtered_down_down <- LUAD_A1_TE_tumor_stage_spearman_filtered %>%
+  filter(sign(SpearmanRho) == -1) %>%
+  filter(sign(log2FC_A1) == -1)
+
+```
+
+
+Now I want to try plotting some of the genes that are really significant and have negative correlation. Those are the ones we would say might be associated with early cancer / carcinogenesis, which is why we would see them in airways of people who do not yet have cancer. (I also try plotting some other guys.)
+
+## Plot expression by tumor stage
+```{r}
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# logCPM <- LUAD_logCPM
+# stage_clean <- LUAD_stage_clean
+# clinical_data <- LUAD_clinical_data
+
+# Pick one or more genes of interest to plot
+#genes_to_plot <- c("FCRL2","TTC16","CLNK") # Highly negatively correlated ones
+#genes_to_plot <- c("GMDS", "NQO1") ## In TM and both positive rho/positive A1 log2FC
+#genes_to_plot <- "SLC2A1" # The one with lowest p value by far
+genes_to_plot <- c("FCRL2","MZB1","CLNK") # All involved in B cells in some way
+
+plot_data <- data.frame()
+label_data <- data.frame()
+
+for (gene in genes_to_plot) {
+  gene_id <- rownames(gene_info)[gene_info$gene_name == gene]
+  if (length(gene_id) == 0 || !(gene_id %in% rownames(logCPM))) next
+  
+  df_plot <- data.frame(
+    Expression = as.numeric(logCPM[gene_id, ]),
+    Stage = stage_clean,
+    Gene = gene
+  )
+  
+  df_labels <- LUAD_A1_TE_tumor_stage_spearman[LUAD_A1_TE_tumor_stage_spearman$Gene ==gene, ]
+  
+  plot_data <- rbind(plot_data, df_plot)
+  label_data <- rbind(label_data, df_labels)
+}
+
+# Add numeric stage to plot_data
+plot_data$Stage_num <- as.numeric(plot_data$Stage)
+
+## Plot boxplots with trendline
+ggplot(plot_data, aes(x = Stage, y = Expression)) +
+  geom_boxplot(outlier.shape = NA, fill = "lightblue", color = "black", width = 0.6) +
+  geom_jitter(width = 0.2, alpha = 0.4, size = 1) +
+  geom_smooth(aes(x = Stage_num, y = Expression), method = "lm", color = "black", se = TRUE, inherit.aes = FALSE) +
+  facet_wrap(~ Gene, scales = "free_y") +
+  
+  geom_text(
+    data = label_data,
+    aes(label = paste0("rho = ", round(SpearmanRho, 2),
+                       "\np = ", signif(p_value, 2),
+                       "\nFDR = ", signif(FDR, 2))),
+    x = Inf, y = Inf, hjust = 1.1, vjust = 1.1, inherit.aes = FALSE,
+    size = 3.5
+  ) +
+  
+  labs(title = "Expression by Tumor Stage with Trendline",
+       x = "Tumor Stage", y = "logCPM Expression") +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+
+### 2025/06/17
+
+Trying a different approach:
+
+The thought is that it could be better to compare early stage with late stage, rather than a spearman correlation.
+None of the spearman correlations look very good anyway.
+
+Seeing as the stage i tumors have roughly the same number of samples as the rest of the stages combined, I think I will just use stage i as early stage and the rest as late stage.
+
+I could use a wilcoxon test or limma. Probably will try limma first.
+
+## Grouping by stage
+```{r}
+
+clinical_data_stages <- clinical_data %>%
+  mutate(Stage = tolower(stage_event_pathologic_stage),
+         Stage_grouped = case_when(
+          grepl("\\bstage i[a-d]?\\b", Stage) ~ "Stage I",
+          grepl("\\bstage ii[a-d]?\\b", Stage) ~ "Stage II",
+          grepl("\\bstage iii[a-d]?\\b", Stage) ~ "Stage III",
+          grepl("\\bstage iv[a-d]?\\b", Stage) ~ "Stage IV",
+          TRUE ~ NA_character_
+        ))
+
+# Tabulate clean counts
+# clinical_data_stages %>%
+#   count(Stage_grouped) %>%
+#   arrange(Stage_grouped)
+
+```
+
+## Filtering counts, normalizing, preparing with voom
+```{r}
+
+library(edgeR)
+library(limma)
+
+
+gene_info_of_interest <- gene_info %>%
+  filter(gene_name %in% LUAD_A1_TE$Gene)
+gene_ids <- rownames(gene_info_of_interest)
+
+# Assuming 'counts' is your raw count matrix: genes (rows) x samples (columns)
+# and 'genes_of_interest' is a character vector of gene symbols
+
+###use filterByExpr
+
+
+# Optionally match using Ensembl IDs or gene symbols depending on how your data is set up
+filtered_counts <- counts[rownames(counts) %in% gene_ids, ]
+
+# Filter out lowly expressed genes
+keep <- filterByExpr(filtered_counts)
+filtered_counts <- filtered_counts[keep, ]
+
+# Make sure sample barcodes match clinical format
+colnames(filtered_counts) <- substr(colnames(filtered_counts), 1, 12) ## Confirm what this does
+
+
+dge <- DGEList(counts = filtered_counts)
+dge <- calcNormFactors(dge)
+
+# Optional: logCPM if you just want expression for plotting
+logCPM <- cpm(dge, log = TRUE)
+
+# Match samples in expression and clinical metadata
+samples_to_keep <- intersect(colnames(filtered_counts), clinical_data_stages$bcr_patient_barcode)
+filtered_counts <- filtered_counts[, samples_to_keep]
+clinical_data_filtered <- clinical_data_stages %>% filter(bcr_patient_barcode %in% samples_to_keep)
+
+# voom transforms + estimates mean-variance
+v <- voom(dge, plot = TRUE)
+
+
+```
+
+### Create design matrix
+```{r}
+clinical_data_filtered_early_late <- clinical_data_filtered %>%
+  mutate(Stage_grouped = case_when(
+    grepl("\\bstage i[a-d]?\\b", tolower(stage_event_pathologic_stage)) ~ "Stage I",
+    grepl("\\bstage ii[a-d]?\\b", tolower(stage_event_pathologic_stage)) ~ "Stage II+",
+    grepl("\\bstage iii[a-d]?\\b", tolower(stage_event_pathologic_stage)) ~ "Stage II+",
+    grepl("\\bstage iv[a-d]?\\b", tolower(stage_event_pathologic_stage)) ~ "Stage II+",
+    TRUE ~ NA_character_
+  )) %>%
+  filter(!is.na(Stage_grouped))  # remove NA stages
+
+# Relevel to make "Stage I" the reference
+clinical_data_filtered_early_late$Stage_grouped <- factor(clinical_data_filtered_early_late$Stage_grouped, levels = c("Stage I", "Stage II+"))
+
+# Make sure sample order matches expression data
+clinical_data_filtered_early_late <- clinical_data_filtered_early_late[match(colnames(v$E), clinical_data_filtered_early_late$bcr_patient_barcode), ]
+
+# # Filtering for complete cases
+# clinical_data_filtered_early_late <- clinical_data_filtered_early_late[
+#   complete.cases(clinical_data_filtered_early_late[, c("Stage_grouped", "gender", "age_at_initial_pathologic_diagnosis")]),
+# ]
+
+# Recalculate which samples have complete clinical data
+complete_idx <- complete.cases(clinical_data_filtered_early_late[, c("Stage_grouped", "gender", "age_at_initial_pathologic_diagnosis")])
+
+# Filter clinical data
+clinical_data_filtered_early_late <- clinical_data_filtered_early_late[complete_idx, ]
+
+# Now filter voom/logCPM matrix to match the same samples
+v <- v[, complete_idx]
+
+# Design matrix: adjust for sex + age
+design <- model.matrix(~ Stage_grouped + gender + age_at_initial_pathologic_diagnosis, data = clinical_data_filtered_early_late)
+
+```
+
+### Fit model, get top genes
+```{r}
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+
+LUAD_stage_I_comparison <- topTable(fit, coef = "Stage_groupedStage II+", number = Inf, adjust = "fdr")
+
+# Change the rownames to the gene names instead of IDs, and also add the info regarding direction of change in A1_TE
+LUAD_stage_I_comparison$gene_id <- rownames(LUAD_stage_I_comparison)
+LUAD_stage_I_comparison <- left_join(LUAD_stage_I_comparison, gene_info[,c("gene_id","gene_name")], by = "gene_id")
+colnames(LUAD_stage_I_comparison)[8] <- "Gene"
+LUAD_stage_I_comparison <- left_join(LUAD_stage_I_comparison, LUAD_A1_TE[,c("Gene","log2FC_TE")], by = "Gene")
+rownames(LUAD_stage_I_comparison) <- LUAD_stage_I_comparison$Gene
+LUAD_stage_I_comparison[,c("gene_id","Gene")] <- NULL
+
+## Save this
+# write.table(LUAD_stage_I_comparison, "../../2_Outputs/LUAD_stage_I_comparison_20250618.txt")
+
+```
+
+## Filter to significant genes, genes with different directions of expression change
+```{r}
+
+LUAD_stage_I_comparison <- read.table("../../2_Outputs/LUAD_stage_I_comparison_20250618.txt")
+
+LUAD_stage_I_comparison_filtered <- LUAD_stage_I_comparison %>%
+  filter(adj.P.Val <= 0.05)
+# STRING: https://version-12-0.string-db.org/cgi/network?networkId=b2MkGu14eQwc
+
+LUAD_stage_I_comparison_filtered_up_up <- LUAD_stage_I_comparison_filtered %>%
+  filter(sign(logFC) == 1) %>%
+  filter(sign(log2FC_TE) == 1)
+
+LUAD_stage_I_comparison_filtered_up_down <- LUAD_stage_I_comparison_filtered %>%
+  filter(sign(logFC) == 1) %>%
+  filter(sign(log2FC_TE) == -1)
+
+LUAD_stage_I_comparison_filtered_down_up <- LUAD_stage_I_comparison_filtered %>%
+  filter(sign(logFC) == -1) %>%
+  filter(sign(log2FC_TE) == 1)
+
+LUAD_stage_I_comparison_filtered_down_down <- LUAD_stage_I_comparison_filtered %>%
+  filter(sign(logFC) == -1) %>%
+  filter(sign(log2FC_TE) == -1)
+
+
+LUAD_stage_I_comparison_filtered_A2 <- LUAD_stage_I_comparison_filtered %>%
+  filter(rownames(.) %in% LUAD_A1_TE_A2$Gene)
+
+LUAD_stage_I_comparison_filtered_A2_TM <- LUAD_stage_I_comparison_filtered %>%
+  filter(rownames(.) %in% LUAD_A1_TE_A2_TM$Gene)
+
+```
+
+## Boxplots of selected genes
+```{r}
+library(ggplot2)
+
+#gene_symbol <- "C4BPA" # Largest negative log2FC
+gene_symbol <- "KRT6A" # Largest positive log2FC
+#gene_symbol <- "MAOB"
+
+
+gene_id <- rownames(gene_info)[gene_info$gene_name == gene_symbol]
+
+expr <- logCPM[gene_id, colnames(logCPM) %in% clinical_data_filtered_early_late$bcr_patient_barcode]
+label_data <- LUAD_stage_I_comparison[rownames(LUAD_stage_I_comparison)==gene_symbol,]
+
+plot_data <- data.frame(
+  Expression = as.numeric(expr),
+  Stage_grouped = clinical_data_filtered_early_late$Stage_grouped
+)
+
+ggplot(plot_data, aes(x = Stage_grouped, y = Expression, fill = Stage_grouped)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.8) +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  
+   geom_text(
+    data = label_data,
+    aes(label = paste0("log2FC = ", round(logFC, 2),
+                       "\np = ", signif(P.Value, 2),
+                       "\nFDR = ", signif(adj.P.Val, 2))),
+    x = Inf, y = Inf, hjust = 1.1, vjust = 1.1, inherit.aes = FALSE,
+    size = 3.5
+  ) +
+  
+  labs(title = gene_symbol,
+       x = "LUAD Tumor Stage", y = "logCPM Expression") +
+  theme_minimal(base_size = 14) +
+  #scale_y_continuous(limits = c(0, 12), expand = expansion(mult = c(0, 0.05))) +
+  scale_fill_manual(values = c("Stage I" = "#1b9e77", "Stage II+" = "#d95f02")) +
+  theme(legend.position = "none") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+###
+
+```
+
+
+## For plotting multiple genes in the same plot
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Specify multiple gene symbols
+gene_symbols <- c("CLNK", "FCRL2", "MZB1")  # Add as many as you want
+
+# Match column names once
+matched_samples <- intersect(colnames(logCPM), clinical_data_filtered_early_late$bcr_patient_barcode)
+
+# Rebuild plot_data
+plot_data <- do.call(rbind, lapply(gene_symbols, function(gene_symbol) {
+  gene_id <- gene_ids[gene_symbol]
+  
+  # Skip if gene_id not in logCPM
+  if (is.na(gene_id) || !(gene_id %in% rownames(logCPM))) return(NULL)
+  
+  expr <- logCPM[gene_id, matched_samples]
+  
+  data.frame(
+    Gene = gene_symbol,
+    Expression = as.numeric(expr),
+    Stage_grouped = clinical_data_filtered_early_late[match(matched_samples, clinical_data_filtered_early_late$bcr_patient_barcode), "Stage_grouped"],
+    Sample = matched_samples
+  )
+}))
+
+
+# Build label data for annotations
+label_data <- LUAD_stage_I_comparison %>%
+  filter(rownames(.) %in% gene_symbols) %>%
+  mutate(Gene = rownames(.)) %>%
+  mutate(label = paste0("log2FC = ", round(logFC, 2),
+                        "\np = ", signif(P.Value, 2),
+                        "\nFDR = ", signif(adj.P.Val, 2)))
+
+# Plot
+ggplot(plot_data, aes(x = Stage_grouped, y = Expression, fill = Stage_grouped)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.8, width = 0.5) +
+  geom_jitter(width = 0.2, alpha = 0.5, size = 0.8) +
+  geom_text(
+    data = label_data,
+    aes(label = label),
+    x = Inf, y = Inf, hjust = 1.1, vjust = 1.1,
+    inherit.aes = FALSE, size = 3.5
+  ) +
+  facet_wrap(~ Gene, scales = "free_y") +
+  labs(title = "Expression of Selected Genes by LUAD Tumor Stage",
+       x = "Tumor Stage Group", y = "logCPM Expression") +
+  scale_fill_manual(values = c("Stage I" = "#1b9e77", "Stage II+" = "#d95f02")) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+```
+

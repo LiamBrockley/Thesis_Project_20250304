@@ -66,9 +66,7 @@ GSE63127 (note this is my reference "CS vs NS" dataset):
 ###########
 
 # GSE4302
-
 ## Load samples from GEO
-
 ```{r}
 # Version info: R 4.2.2, Biobase 2.58.0, GEOquery 2.66.0, limma 3.54.0
 ################################################################
@@ -78,10 +76,11 @@ library(limma)
 library(dplyr)
 
 # load series and platform data from GEO
-
 gset <- getGEO("GSE4302", GSEMatrix =TRUE, AnnotGPL=TRUE)
 if (length(gset) > 1) idx <- grep("GPL570", attr(gset, "names")) else idx <- 1
 gset <- gset[[idx]]
+
+phenotypic_data <- pData(gset) 
 
 # make proper column names to match toptable 
 fvarLabels(gset) <- make.names(fvarLabels(gset))
@@ -99,15 +98,12 @@ gset <- gset[ ,sel]
 
 gset <- gset[complete.cases(exprs(gset)), ] # skip missing values
 
-
-
 samples_GSE4302 <- strsplit("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX100X0X000XXX000X000X0XXX001110001100000001111101101110", "")[[1]]
 length(samples_GSE4302=="X")
 
 ```
 
 ## Checks and normalization
-
 ```{r}
 ## Make histograms and boxplots to check if the data is log-transformed and needs quantile normalization ##
 hist(as.matrix(exprs(gset))) # Looks ok
@@ -163,6 +159,7 @@ write.table(GSE4302_expr_matrix, "../2_Outputs/2_Airway_expression/GSE4302_expr_
 write.table(GSE4302_sstat_data, "../2_Outputs/2_Airway_expression/GSE4302_sstat_data.txt")
 
 ```
+
 ## Vooma and fit
 ```{r}
 # calculate precision weights and show plot of mean-variance trend
@@ -291,7 +288,6 @@ write.table(GSE4302_CS_NS_GEO2R_limma_sig, '../2_Outputs/1_Airway_DEGs/GSE4302_C
 ###########
 
 # GSE7895
-
 ## Loading libraries and samples for differential expression analysis
 ```{r}
 # Version info: R 4.2.2, Biobase 2.58.0, GEOquery 2.66.0, limma 3.54.0
@@ -324,6 +320,9 @@ sml <- sml[sel]
 gset <- gset[ ,sel]
 # Tutorial suggests not excluding samples, but I think you have to if they are not in the groups of interest
 length(sml) # 72 samples
+
+phenotypic_data_A2 <- pData(gset)
+age_a2 <- as.numeric(gsub("Age:", "", phenotypic_data_A2$`characteristics_ch1.1`))
 
 ```
 
@@ -822,6 +821,8 @@ gset <- getGEO("GSE19027", GSEMatrix =TRUE, AnnotGPL=TRUE)
 if (length(gset) > 1) idx <- grep("GPL96", attr(gset, "names")) else idx <- 1
 gset <- gset[[idx]]
 
+phenotypic_data <- pData(gset)
+
 # make proper column names to match toptable 
 fvarLabels(gset) <- make.names(fvarLabels(gset))
 
@@ -839,6 +840,8 @@ length(sml) # 30 samples
 
 samples_GSE19027 <- strsplit("11000000X1XX011X11111XXXXXXXXXXXX111111XX11XXXXXX1X1010XXXXX", "")[[1]]
 length(samples_GSE19027=="X")
+
+phenotypic_data <- pData(gset) 
 
 ```
 
@@ -1073,6 +1076,8 @@ library(dplyr)
 gset <- getGEO("GSE20257", GSEMatrix =TRUE, AnnotGPL=TRUE)
 if (length(gset) > 1) idx <- grep("GPL570", attr(gset, "names")) else idx <- 1
 gset <- gset[[idx]]
+
+phenotypic_data <- pData(gset)
 
 # make proper column names to match toptable 
 fvarLabels(gset) <- make.names(fvarLabels(gset))

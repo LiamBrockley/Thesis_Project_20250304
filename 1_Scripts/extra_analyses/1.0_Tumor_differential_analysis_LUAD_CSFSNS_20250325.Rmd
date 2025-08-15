@@ -21,7 +21,6 @@ library(dplyr, verbose = FALSE)
 
 # 1. Differential expression analysis of reference airway current vs never smoker dataset (A1, GSE63127)
 
-
 2025/03/05: It seems that the expression values of the counts file indicate that the counts are actually raw and not RMA normalized. So, I am going to try this again where I download the raw .CEL files and normalize them with RMA myself. Maybe the batch effect will also be gone if I do it this way... let's see. [[ Try this when I have better wifi...]]
 
 ```{r}
@@ -46,7 +45,6 @@ library(dplyr, verbose = FALSE)
 # Version info: R 4.2.2, Biobase 2.58.0, GEOquery 2.66.0, limma 3.54.0
 ################################################################
 #   Differential expression analysis with limma
-
 
 # load series and platform data from GEO (date: 2024/10/15)
 gset <- getGEO("GSE63127", GSEMatrix =TRUE, AnnotGPL=TRUE)
@@ -77,6 +75,7 @@ gs <- factor(sml)
 groups <- make.names(c("Non-smoker","Smoker"))
 levels(gs) <- groups
 gset$group <- gs
+
 ```
 
 ## 1.2 Quality control checks and normalization 
@@ -645,6 +644,7 @@ head(clinical_data)
 
 ## 2.1.2 Formatting as tumor-normal pairs, in this case NOT removing never-smoker samples, as a comparison
 ```{r}
+
 counts <- as.data.frame(assay(data))  # Extracting the count matrix (these are supposedly raw counts)
 #head(counts)  # Viewing the first few rows (genes) and columns (samples)
 

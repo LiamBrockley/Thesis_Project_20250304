@@ -332,8 +332,15 @@ gene_ids <- rownames(gene_info_of_interest)
 # Assuming 'counts' is your raw count matrix: genes (rows) x samples (columns)
 # and 'genes_of_interest' is a character vector of gene symbols
 
+###use filterByExpr
+
+
 # Optionally match using Ensembl IDs or gene symbols depending on how your data is set up
 filtered_counts <- counts[rownames(counts) %in% gene_ids, ]
+
+# Filter out lowly expressed genes
+keep <- filterByExpr(filtered_counts)
+filtered_counts <- filtered_counts[keep, ]
 
 # Make sure sample barcodes match clinical format
 colnames(filtered_counts) <- substr(colnames(filtered_counts), 1, 12) ## Confirm what this does
@@ -408,13 +415,32 @@ LUAD_stage_I_comparison <- left_join(LUAD_stage_I_comparison, LUAD_A1_TE[,c("Gen
 rownames(LUAD_stage_I_comparison) <- LUAD_stage_I_comparison$Gene
 LUAD_stage_I_comparison[,c("gene_id","Gene")] <- NULL
 
+## Save this
+# write.table(LUAD_stage_I_comparison, "../../2_Outputs/LUAD_stage_I_comparison_20250618.txt")
+
 ```
 
-## Filter to significant genes
+## Filter to significant genes, genes with different directions of expression change
 ```{r}
 
 LUAD_stage_I_comparison_filtered <- LUAD_stage_I_comparison %>%
   filter(adj.P.Val <= 0.05)
+
+LUAD_stage_I_comparison_filtered_up_up <- LUAD_stage_I_comparison_filtered %>%
+  filter(sign(logFC) == 1) %>%
+  filter(sign(log2FC_TE) == 1)
+
+LUAD_stage_I_comparison_filtered_up_down <- LUAD_stage_I_comparison_filtered %>%
+  filter(sign(logFC) == 1) %>%
+  filter(sign(log2FC_TE) == -1)
+
+LUAD_stage_I_comparison_filtered_down_up <- LUAD_stage_I_comparison_filtered %>%
+  filter(sign(logFC) == -1) %>%
+  filter(sign(log2FC_TE) == 1)
+
+LUAD_stage_I_comparison_filtered_down_down <- LUAD_stage_I_comparison_filtered %>%
+  filter(sign(logFC) == -1) %>%
+  filter(sign(log2FC_TE) == -1)
 
 ```
 
@@ -422,7 +448,9 @@ LUAD_stage_I_comparison_filtered <- LUAD_stage_I_comparison %>%
 ```{r}
 library(ggplot2)
 
-gene_symbol <- "KRT6A"
+#gene_symbol <- "C4BPA" # Largest negative log2FC
+#gene_symbol <- "KRT6A" # Largest positive log2FC
+#gene_symbol <- "MAOB"
 
 gene_id <- rownames(gene_info)[gene_info$gene_name == gene_symbol]
 
@@ -443,6 +471,9 @@ ggplot(plot_data, aes(x = Stage_grouped, y = Expression, fill = Stage_grouped)) 
   scale_fill_manual(values = c("Stage I" = "#1b9e77", "Stage II+" = "#d95f02")) +
   theme(legend.position = "none")
 
+###
+
+expr_df <- as.data.frame(expr)
 
 ```
 
@@ -690,6 +721,6 @@ ggplot(plot_data, aes(x = Stage, y = Expression)) +
 It seems strange that there are so many fewer genes here than with LUAD. I checked the FDR math and it's working properly. I guess that's just the way it is.
 
 
-
+Anyway, now I am going to try comparing Stage I vs. Stage II+ using limma and accounting for age, smoking status, etc. as I did above for LUAD
 
 
