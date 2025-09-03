@@ -393,11 +393,11 @@ LUSC_stage_I_comparison_filtered_up_up <- LUSC_stage_I_comparison_filtered %>%
   filter(sign(logFC) == 1) %>%
   filter(sign(log2FC_TE) == 1)
 
-LUSC_stage_I_comparison_filtered_up_down <- LUSC_stage_I_comparison_filtered %>%
+LUSC_stage_I_comparison_filtered_down_up <- LUSC_stage_I_comparison_filtered %>%
   filter(sign(logFC) == 1) %>%
   filter(sign(log2FC_TE) == -1)
 
-LUSC_stage_I_comparison_filtered_down_up <- LUSC_stage_I_comparison_filtered %>%
+LUSC_stage_I_comparison_filtered_up_down <- LUSC_stage_I_comparison_filtered %>%
   filter(sign(logFC) == -1) %>%
   filter(sign(log2FC_TE) == 1)
 
@@ -405,8 +405,29 @@ LUSC_stage_I_comparison_filtered_down_down <- LUSC_stage_I_comparison_filtered %
   filter(sign(logFC) == -1) %>%
   filter(sign(log2FC_TE) == -1)
 
-LUSC_stage_I_comparison_filtered_A2 <- LUSC_stage_I_comparison_filtered %>%
-  filter(rownames(.) %in% LUSC_A1_TE_A2$Gene)
+#LUSC_stage_I_comparison_filtered_A2 <- LUSC_stage_I_comparison_filtered %>%
+ # filter(rownames(.) %in% LUSC_A1_TE_A2$Gene)
+
+## Make a summary table
+
+## Make a table to summarize all of these
+LUSC_stage_I_comparison_summary <- data.frame(
+  gene   = rownames(LUSC_stage_I_comparison_filtered_up_up),
+  status = "up/up",
+  stringsAsFactors = FALSE
+)
+
+LUSC_stage_I_comparison_summary <- rbind(
+  LUSC_stage_I_comparison_summary,
+  data.frame(
+    gene   = rownames(LUSC_stage_I_comparison_filtered_down_down),
+    status = "down/down",
+    stringsAsFactors = FALSE
+  )
+)
+
+# Save this summary list
+#write.table(LUSC_stage_I_comparison_summary, "../../2_Outputs/LUSC_stage_I_comparison_summary_20250829.txt")
 
 ```
 

@@ -340,7 +340,6 @@ gene_ids <- rownames(gene_info_of_interest)
 
 ###use filterByExpr
 
-
 # Optionally match using Ensembl IDs or gene symbols depending on how your data is set up
 filtered_counts <- counts[rownames(counts) %in% gene_ids, ]
 
@@ -350,7 +349,6 @@ filtered_counts <- filtered_counts[keep, ]
 
 # Make sure sample barcodes match clinical format
 colnames(filtered_counts) <- substr(colnames(filtered_counts), 1, 12) ## Confirm what this does
-
 
 dge <- DGEList(counts = filtered_counts)
 dge <- calcNormFactors(dge)
@@ -439,11 +437,11 @@ LUAD_stage_I_comparison_filtered_up_up <- LUAD_stage_I_comparison_filtered %>%
   filter(sign(logFC) == 1) %>%
   filter(sign(log2FC_TE) == 1)
 
-LUAD_stage_I_comparison_filtered_up_down <- LUAD_stage_I_comparison_filtered %>%
+LUAD_stage_I_comparison_filtered_down_up <- LUAD_stage_I_comparison_filtered %>%
   filter(sign(logFC) == 1) %>%
   filter(sign(log2FC_TE) == -1)
 
-LUAD_stage_I_comparison_filtered_down_up <- LUAD_stage_I_comparison_filtered %>%
+LUAD_stage_I_comparison_filtered_up_down <- LUAD_stage_I_comparison_filtered %>%
   filter(sign(logFC) == -1) %>%
   filter(sign(log2FC_TE) == 1)
 
@@ -458,6 +456,41 @@ LUAD_stage_I_comparison_filtered_A2 <- LUAD_stage_I_comparison_filtered %>%
 LUAD_stage_I_comparison_filtered_A2_TM <- LUAD_stage_I_comparison_filtered %>%
   filter(rownames(.) %in% LUAD_A1_TE_A2_TM$Gene)
 
+## Make a table to summarize all of these
+LUAD_stage_I_comparison_summary <- data.frame(
+  gene   = rownames(LUAD_stage_I_comparison_filtered_up_up),
+  status = "up/up",
+  stringsAsFactors = FALSE
+)
+
+LUAD_stage_I_comparison_summary <- rbind(
+  LUAD_stage_I_comparison_summary,
+  data.frame(
+    gene   = rownames(LUAD_stage_I_comparison_filtered_up_down),
+    status = "up/down",
+    stringsAsFactors = FALSE
+  )
+)
+
+LUAD_stage_I_comparison_summary <- rbind(
+  LUAD_stage_I_comparison_summary,
+  data.frame(
+    gene   = rownames(LUAD_stage_I_comparison_filtered_down_down),
+    status = "down/down",
+    stringsAsFactors = FALSE
+
+  )
+)
+
+LUAD_stage_I_comparison_summary$A2 <- LUAD_stage_I_comparison_summary$gene %in% rownames(LUAD_stage_I_comparison_filtered_A2)
+
+LUAD_stage_I_comparison_summary$A2_TM <- LUAD_stage_I_comparison_summary$gene %in% rownames(LUAD_stage_I_comparison_filtered_A2_TM)
+
+# Save this summary list
+write.table(LUAD_stage_I_comparison_summary, "../../2_Outputs/LUAD_stage_I_comparison_summary_20250829.txt")
+
+
+
 ```
 
 ## Boxplots of selected genes
@@ -467,6 +500,7 @@ library(ggplot2)
 #gene_symbol <- "C4BPA" # Largest negative log2FC
 gene_symbol <- "KRT6A" # Largest positive log2FC
 #gene_symbol <- "MAOB"
+
 
 
 gene_id <- rownames(gene_info)[gene_info$gene_name == gene_symbol]

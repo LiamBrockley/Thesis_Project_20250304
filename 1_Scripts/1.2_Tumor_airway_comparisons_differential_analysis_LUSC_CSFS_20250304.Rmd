@@ -784,6 +784,45 @@ legend("bottomleft",
 ```
 
 
+2025/08/21
+Just checking the phenotypic data for the samples I kept
+```{r}
+
+# Filter the phenotypic table to the names of the samples
+sample_IDs <- names(counts_matched_T_NM) # Get the sample IDs that were kept
+patient_IDs <- unique(gsub("-01A$|-11A$|-01B|-11B", "", sample_IDs)) # Get the patient IDs of these samples
+
+clinical_data_kept_LUSC <- clinical_data %>%
+  filter(bcr_patient_barcode %in% patient_IDs) 
+
+# Just keep column info that seems relevant
+clinical_data_kept_LUSC_cols <- clinical_data_kept_LUSC[,c(1,3,6,7,8,9,10,12,16,23,24,25,26,34,35,36,37,67,68,69,70,71,72)]
+
+# Age at diagnosis
+median(clinical_data_kept_LUSC_cols$age_at_initial_pathologic_diagnosis)
+range(clinical_data_kept_LUSC_cols$age_at_initial_pathologic_diagnosis)
+
+# Sex
+table(clinical_data_kept_LUSC_cols$gender)
+
+# Race
+table(clinical_data_kept_LUSC_cols$race_list)
+
+# Smoking history
+table(clinical_data_kept_LUSC_cols$tobacco_smoking_history)
+
+# Stage
+table(clinical_data_kept_LUSC_cols$stage_event_pathologic_stage)
+
+# pack years
+packyears <- clinical_data_kept_LUSC_cols$number_pack_years_smoked[complete.cases(clinical_data_kept_LUSC_cols$number_pack_years_smoked)]
+length(packyears)
+median(packyears)
+range(packyears)
+
+```
+
+
 Note that I include a filtering step to remove genes with low counts:
 "Filter out rows with less than 10 total counts in the smallest sample group size"
 The smallest group (tumor or normal) has 44 members, so this filters out any genes that cannot reach a sum of 10 counts using 44 samples.
@@ -842,7 +881,7 @@ TCGA_LUSC_limma_DEG <- TCGA_LUSC_limma_DEG %>%
 TCGA_LUSC_limma_DEG$Gene <- gene_info_sorted$gene_name
 
 # Save output
-write.table(TCGA_LUSC_limma_DEG, "../2_Outputs/4_Tumor_DEGs/TCGA_LUSC_limma_DEG_CSFS_20250307.txt", sep = '\t')
+#write.table(TCGA_LUSC_limma_DEG, "../2_Outputs/4_Tumor_DEGs/TCGA_LUSC_limma_DEG_CSFS_20250307.txt", sep = '\t')
 
 ```
 
@@ -852,7 +891,7 @@ write.table(TCGA_LUSC_limma_DEG, "../2_Outputs/4_Tumor_DEGs/TCGA_LUSC_limma_DEG_
 ```{r, fig.width=10, fig.height=6}
 
 log2FC_cutoff_TE <- 1
-FDR_cutoff_TE <- 0.001
+FDR_cutoff_TE <- 0.05
 
 v_TE <- EnhancedVolcano::EnhancedVolcano(
   toptable = TCGA_LUSC_limma_DEG,
@@ -880,7 +919,7 @@ v_TE <- EnhancedVolcano::EnhancedVolcano(
   ylim = c(0,10)
 )
 
-v_TE
+v_TE + theme(aspect.ratio = 0.7)
 ```
 
 ---
@@ -1053,6 +1092,38 @@ legend("bottomleft",
 ## Very good tumor-normal separation
 ```
 
+2025/08/21
+Just checking the phenotypic data for the samples I kept
+```{r}
+
+
+# Just keep column info that seems relevant
+clinical_data_filtered_LUSC_TM_cols <- clinical_data_filtered[,c(1,3,6,7,8,9,10,12,16,23,24,25,26,34,35,36,37,67,68,69,70,71,72)]
+
+# Age at diagnosis
+median(clinical_data_filtered_LUSC_TM_cols$age_at_initial_pathologic_diagnosis)
+range(clinical_data_filtered_LUSC_TM_cols$age_at_initial_pathologic_diagnosis)
+
+# Sex
+table(clinical_data_filtered_LUSC_TM_cols$gender)
+
+# Race
+table(clinical_data_filtered_LUSC_TM_cols$race_list)
+
+# Smoking history
+table(clinical_data_filtered_LUSC_TM_cols$tobacco_smoking_history)
+
+# Stage
+table(clinical_data_filtered_LUSC_TM_cols$stage_event_pathologic_stage)
+
+# pack years
+packyears <- clinical_data_filtered_LUSC_TM_cols$number_pack_years_smoked[complete.cases(clinical_data_filtered_LUSC_TM_cols$number_pack_years_smoked)]
+length(packyears)
+median(packyears)
+range(packyears)
+
+```
+
 ## 3.4 Differential methylation analysis using limma
 ```{r}
 
@@ -1177,7 +1248,7 @@ boxplot(exprs(gset)) # Same range of values, with similar-looking ranges, but no
 
 ## Going to try this again without the quantile to see what happens
 
-# exprs(gset) <- normalizeBetweenArrays(exprs(gset))
+ exprs(gset) <- normalizeBetweenArrays(exprs(gset))
 # boxplot(exprs(gset))
 # 2024/11/12: I elected to do quantile normalization because this gave me a larger list of "persistent" genes. Could justify that it "better captures the variation between groups" etc
 
@@ -1364,6 +1435,7 @@ dT <- decideTests(fit2, adjust.method="fdr",
 
 # Venn diagram of results
 vennDiagram(dT)
+vennDiagram(dT[,c(1,2)])
 
 # Select the genes differentially expressed in both CS_vs_NS and FS_vs_NS
 dT_persistent <- dT %>%
@@ -1406,7 +1478,43 @@ GSE7895_persistent_DEGs <- tT_persistent %>%
 # Save output
 #write.table(GSE7895_persistent_DEGs, "../2_Outputs/1_Airway_DEGs/GSE7895_persistent_DEGs_no_quantile_20241216.txt")
 
+## Trying to make an euler diagram of the comparisons we care about
+library(eulerr)
+
+dT_df <- as.data.frame(dT)
+dT_df[dT_df == -1] <- 1
+
+fit <- euler(c("CS vs NS" = dT_df$CS_vs_NS, "CS vs FS" = dT_df$FS_vs_NS))
+
+plot(fit, 
+     fills = c("skyblue", "salmon"), 
+     quantities = TRUE,
+     main = "Dummy Euler Diagram (CS vs NS and FS vs NS)")
+
 ```
+
+## An euler diagram to display the results but just substituting in numbers
+
+```{r}
+
+library(eulerr)
+
+fit <- euler(c(
+  "CS vs NS" = 618,           # CS-only
+  "FS vs NS" = 82,            # FS-only
+  "CS vs NS&FS vs NS" = 116         # overlap
+))
+
+plot(fit, 
+     fills = c("skyblue", "salmon"), 
+     quantities = TRUE,
+    # labels = list(col = "black"),
+     main = "A2 Euler Diagram (CS vs NS and FS vs NS)")
+
+
+```
+```
+
 
 
 ## 4.5 Extra check (PCA for stratification of samples based on persistent genes)

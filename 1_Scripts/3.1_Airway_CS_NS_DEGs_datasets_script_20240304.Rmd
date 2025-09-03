@@ -321,9 +321,24 @@ gset <- gset[ ,sel]
 # Tutorial suggests not excluding samples, but I think you have to if they are not in the groups of interest
 length(sml) # 72 samples
 
-phenotypic_data_A2 <- pData(gset)
-age_a2 <- as.numeric(gsub("Age:", "", phenotypic_data_A2$`characteristics_ch1.1`))
 
+## Looking at age and packyears
+phenotypic_data_A2 <- pData(gset)
+
+# Age
+age_a2 <- gsub("Age:", "", phenotypic_data_A2$`characteristics_ch1.1`)
+age_a2 <- as.numeric(gsub(" Packyears:.*", "", age_a2))
+median(age_a2)
+range(age_a2)
+
+# Packyears
+packyears_a2 <- ifelse(
+  grepl("Packyears:", phenotypic_data_A2$`characteristics_ch1.1`),
+  as.numeric(sub(".*Packyears:([0-9]+\\.?[0-9]*).*", "\\1", phenotypic_data_A2$`characteristics_ch1.1`)),
+  0
+)
+median(packyears_a2[packyears_a2>0])
+range(packyears_a2[packyears_a2>0])
 ```
 
 ## Checks and normalizations for log2 and quantile
@@ -1077,8 +1092,6 @@ gset <- getGEO("GSE20257", GSEMatrix =TRUE, AnnotGPL=TRUE)
 if (length(gset) > 1) idx <- grep("GPL570", attr(gset, "names")) else idx <- 1
 gset <- gset[[idx]]
 
-phenotypic_data <- pData(gset)
-
 # make proper column names to match toptable 
 fvarLabels(gset) <- make.names(fvarLabels(gset))
 
@@ -1097,6 +1110,29 @@ gset <- gset[complete.cases(exprs(gset)), ] # skip missing values
 
 
 length(strsplit("XXXXXXXXXXXXXXXXX1100000000XXXXXXXXXXX11111111000011111XXXXXXX0000000000011111111111111111100010010011XXXX1100011000011111111111X000001","")[[1]]=="X")
+
+A5_phenotypic_data <- pData(gset)
+
+# Age
+a5_age <- as.numeric(gsub("age: ", "", A5_phenotypic_data$characteristics_ch1))
+a5_age[6] <- 45 ## The "Age:" label threw it off
+median(a5_age)
+range(a5_age)
+
+# Sex
+table(A5_phenotypic_data$characteristics_ch1.1)
+
+# Ethnicity
+table(A5_phenotypic_data$characteristics_ch1.2)
+
+# Packyears
+A5_packyears <- as.numeric(ifelse(
+  grepl("pack-years", A5_phenotypic_data$characteristics_ch1.3),
+  sub(".*?(\\d+\\.?\\d*)\\s*pack-years.*", "\\1", A5_phenotypic_data$characteristics_ch1.3),
+  0
+))
+median(A5_packyears[A5_packyears>0])
+range(A5_packyears[A5_packyears>0])
 
 ```
 
