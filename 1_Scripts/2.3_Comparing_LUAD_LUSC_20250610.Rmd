@@ -22,6 +22,8 @@ This is up to the committee. When I change the lists of genes of interest it wil
 
 ## Read in the genes of interest
 ```{r}
+library(dplyr)
+
 ## These are the genes of interest I have defined as of 2025/05/16
 
 # LUAD 
@@ -174,15 +176,15 @@ plot(main = "SMD meta-analysis of A1-TE genes",
 
 
 # Shared between LUAD and LUSC meta analysis genes
-SMD_meta_shared <- intersect(LUAD_A1_TE_SMD_summary_overall_filtered_genes, LUSC_A1_TE_SMD_summary_overall_filtered_genes)
+SMD_meta_shared <- intersect(LUAD_A1_TE_SMD_summary_overall_filter$gene, LUSC_A1_TE_SMD_summary_overall_filter$gene)
 # Pathways shared: https://maayanlab.cloud/Enrichr/enrich?dataset=81c21d6319be95a21dea10e8df76ec5f
 
 # Unique to LUAD
-LUAD_SMD_meta_unique <- setdiff(LUAD_A1_TE_SMD_summary_overall_filtered_genes, LUSC_A1_TE_SMD_summary_overall_filtered_genes)
+LUAD_SMD_meta_unique <- setdiff(LUAD_A1_TE_SMD_summary_overall_filter$gene, LUSC_A1_TE_SMD_summary_overall_filter$gene)
 # PAthways for LUAD: https://maayanlab.cloud/Enrichr/enrich?dataset=052df690b890326b1ce8b8247886a780
 
 # Unique to LUSC
-LUSC_SMD_meta_unique <- setdiff(LUSC_A1_TE_SMD_summary_overall_filtered_genes, LUAD_A1_TE_SMD_summary_overall_filtered_genes)
+LUSC_SMD_meta_unique <- setdiff(LUSC_A1_TE_SMD_summary_overall_filter$gene, LUAD_A1_TE_SMD_summary_overall_filter$gene)
 # Pathways for LUSC: https://maayanlab.cloud/Enrichr/enrich?dataset=873b696ac486eecf36b86b451cbe6159
 
 ```
@@ -249,7 +251,7 @@ clinical_data_smoking_history_sample_barcodes <- clinical_data_smoking_history %
   )
 
 ## Read in the data for TCGA-LUAD methylation
-LUAD_methylation_hm450_tumor <- read.table("../../4_TCGA_data/TCGA_LUAD/data_methylation_hm450_LUAD.txt", header=TRUE, fill=TRUE)
+LUAD_methylation_hm450_tumor <- read.table("../3_TCGA_data/TCGA_LUAD/data_methylation_hm450_LUAD.txt", header=TRUE, fill=TRUE)
 
 # Get the barcodes existing in rownames of the sample info
 clinical_data_smoking_history_sample_barcodes_methyl <- clinical_data_smoking_history_sample_barcodes[clinical_data_smoking_history_sample_barcodes$bcr_patient_barcode %in% colnames(LUAD_methylation_hm450_tumor),] 
@@ -395,7 +397,7 @@ clinical_data_smoking_history_sample_barcodes <- clinical_data_smoking_history %
   )
 
 ## Read in the data for TCGA-LUSC methylation
-LUSC_methylation_hm450_tumor <- read.table("../../4_TCGA_data/TCGA_LUSC/data_methylation_hm450_LUSC.txt", header=TRUE, fill=TRUE)
+LUSC_methylation_hm450_tumor <- read.table("../3_TCGA_data/TCGA_LUSC/data_methylation_hm450_LUSC.txt", header=TRUE, fill=TRUE)
 
 # Get the barcodes existing in rownames of the sample info
 clinical_data_smoking_history_sample_barcodes_methyl <- clinical_data_smoking_history_sample_barcodes[clinical_data_smoking_history_sample_barcodes$bcr_patient_barcode %in% colnames(LUSC_methylation_hm450_tumor),] 
@@ -550,10 +552,7 @@ legend("topright",
 
 ```
 
-
 So far it doesn't look like there is much of a trend happening here. I could also try hierarchical clustering, and maybe also try straight differential analysis and gene comparison instead. Also, maybe the thing that Carl DeBoer suggested which is looking at the "loads" of the genes in the PCA?
-
-
 
 
 

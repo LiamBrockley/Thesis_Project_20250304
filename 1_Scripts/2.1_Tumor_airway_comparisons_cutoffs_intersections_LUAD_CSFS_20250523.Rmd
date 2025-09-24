@@ -27,14 +27,12 @@ TCGA_LUAD_DMG    <- read.table("../../2_Outputs/3_Tumor_DMGs/TCGA_LUAD_limma_DMG
 
 ```
 
-
-
 ############
 
 2025/05/23:
-Here I am now just using the sequential filtering method because I can make the case that the last two filtering steps give more overlap than expected by chance via the Fisher's exact test.
+Here I am using the sequential filtering method because the last two filtering steps generate more overlap than expected by chance via the Fisher's exact test.
 
-This is the method I was using in a sequential pipeline to try to test each assumption being made along the way, though I arbitrarily picked a 75th percentile log2FC cutoff.
+This is the method I was using in a sequential pipeline to try to test each assumption being made along the way. I arbitrarily picked a 75th percentile log2FC cutoff -- the test results were the same (significant) even with a much less stringent cutoff, interestingly.
 
 ## Using sequential filtering with 75th percentiles
 
@@ -178,7 +176,7 @@ print(paste0("p_value: ", p_value))
 ```
 
 
-I don't think that the hypergeometric test can apply to checking the A2 overlap step, because A1 and A2 cannot be called truly independent. Since they both measure genes with expression affected by smoking in airways (A1 in current smokers and A2 in former smokers), they will be expected to share many genes.
+I don't think that the hypergeometric test can apply to checking the A2 overlap step, because A1 and A2 are not truly independent. Since they both measure genes with expression affected by smoking in airways (A1 in current smokers and A2 in former smokers), they will be expected to share many genes.
 
 ## Comparing and filtering A2 and "linked" genes to give "methylation related linked genes"
 
@@ -221,8 +219,7 @@ extra stuff
 #####
 
 
-Now I instead want to try Dr. DeBoer's suggestion of linear correlations and PCA.
-I think for linear correlations I just literally plot the log2FCs, not the expression values?
+I want to try Dr. DeBoer's suggestion of linear correlations and PCA.
 
 ## Plotting log2FCs of FDR<0.05 genes from A1 and TE
 ```{r}
